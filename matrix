@@ -1,0 +1,379 @@
+#!/bin/bash
+# Zachary Thomas
+# Assignment 1
+# 1/13/2018
+
+# clean - cleans up temp files.
+clean(){
+	# Clean up all three temp files.	
+	rm -f "$inputFile"
+	rm -f "$tempFile"
+	rm -f "$tempFile2"
+}
+
+# error - call this function when we want to end the script early with an error.
+error(){
+	# First argument selects error code.
+	if [ $1 = 1 ]
+	then 
+		>&2 echo "Error: Invalid number of arguments."
+	elif [ $1 = 2 ]
+	then
+		>&2 echo "Error: Not a valid function."
+	elif [ $1 = 3 ]
+	then
+		>&2 echo "Error: Invalid input."
+	elif [ $1 = 4 ]
+	then
+		>&2 echo "Error: Dimensions of matrices not compatible."
+	fi
+	
+	# Clean up temp files.
+	clean
+	
+	exit 1
+}
+
+# compare - compares the dimensions of two matrices,
+# if the requested comparison evaluates to true then set validCompare to 1
+# otherwise we set it to 0.
+compare(){
+	validCompare=0
+	
+	# Get the number of rows.
+	rowSumOne="$(wc -l < $1)"
+	rowSumTwo="$(wc -l < $2)"
+
+	# Get the number of columns.
+	columnSumOne=0
+	columnOne="$(head -1 $1)"
+	for i in $columnOne
+	do
+		((columnSumOne++))
+	done
+		
+	columnSumTwo=0
+	columnTwo="$(head -1 $2)"
+	for i in $columnTwo
+	do
+		((columnSumTwo++))
+	done
+	
+	# If our third argument is set to 1.
+	# Make sure there are the same number of rows.
+	if [ $rowSumOne = $rowSumTwo -a $3 == 1 ]
+	then
+		# Make sure there are the same number of columns.
+		if [ $columnSumOne = $columnSumTwo ]
+		then
+			validCompare=1 # The comparison has evaluated to true.	
+		fi
+	fi
+	
+	# If our third argument is set to 2.
+	# Make sure that the first matrix has the same number
+	# of columns as the second matrix has rows.
+	if [ $columnSumOne = $rowSumTwo -a $3 == 2 ]
+	then
+		validCompare=1 # The comparison has evaluted to true.
+	fi
+}
+
+# dims - show the number of rows and columns for a single matrix.
+dims(){
+	# We find the number of rows.
+	# Get the line count of our input file and put it in rowSum.
+	rowSum="$(wc -l < $1)"	
+	
+	# We find the number of columns.
+	# Get the first line of our input file and put it in column.
+	columnSum=0
+	column="$(head -1 $1)"
+	for i in $column
+	do
+		((columnSum++)) # We increment columnSum by one.
+	done
+	
+	# We display the number of rows and columns.
+	printf "$rowSum" > $tempFile # Show the number of rows.
+	printf " " >> $tempFile
+	printf "$columnSum" >> $tempFile # Show the number of columns.
+
+	# Display the result.
+	cat $tempFile
+	echo
+}
+
+# transpose - reflects the elements of a matrix along the main diagonal.
+transpose(){
+	columnSum=0 # This will be the number of columns.
+
+	# Loop until we have cut out each column.
+	column="$(head -1 $1)"
+	for i in $column
+	do
+		((columnSum++)) # We increment columnSum by one.
+
+		# Cut out columns and paste them as rows.
+		cut -f $columnSum $1 | paste -s >> $tempFile
+	done
+	
+	# Print to screen our transposed temp file.
+	cat $tempFile
+}
+
+# mean - takes the mean of each column and displays it for a single matrix.
+mean(){
+	columnCount=0 # The number of columns we have gone through.
+			
+	# Loop through each column and find the mean.
+	column="$(head -1 $1)"
+	loopCount="$(echo $column | wc -w)" # Find out how many times we will loop.
+	for i in $column
+	do
+		# Cut out a column and convert it into a row.
+		((columnCount++)) # We increment columnCount by one.
+		cut -f $columnCount $1 | paste -s > $tempFile
+	
+		# Get the sum and then average of our row.
+		count=0
+		calc=0
+		row="$(head -1 $tempFile)"
+		for i in $row
+		do
+			((count++)) # Increment our count.
+			calc="$(($calc + $i))" # Here we get the sum.
+		done
+		
+		# Find the rounded average.
+		calc="$(((calc + (count / 2) * ((calc > 0) * 2 - 1)) / count ))"
+
+		echo -n $calc >> $tempFile2 # Save the average.
+	
+		# Print a tab unless its the end of the line, then print newline.
+		if [ $columnCount -lt $loopCount ]
+		then
+			printf "\t" >> $tempFile2
+		else
+			printf "\n" >> $tempFile2
+		fi
+	done
+	
+	# Display the result.
+	cat $tempFile2
+}
+
+# add - takes two matrices with matching dimensions and adds their elements.
+add(){
+	rowSum="$(wc -l < $1)" # We find the number of rows.
+	firstLine="$(head -1 $1)" # First line of first file. 
+	count=0	
+
+	# Loop through all the rows while adding the results. 
+	while [ $count -lt $rowSum ]	
+	do
+		((count++))		
+
+		# Add all the numbers together in the current line.
+		countNum=0
+		loopCount="$(echo $firstLine | wc -w)" # Find out how many times we will loop.
+		for i in $firstLine
+		do
+			((countNum++))
+
+			# Cut out a number (from the current line) from each file and add them.
+			numOne="$(head -"$count" $1 | tail -1 | cut -f $countNum)"
+			numTwo="$(head -"$count" $2 | tail -1 | cut -f $countNum)"
+			numFin="$((numOne + numTwo))"
+		
+			echo -n $numFin >> $tempFile # Save the sum.
+			
+			# Print a tab unless its the end of the line, then print newline.
+			if [ $countNum -lt $loopCount ]
+			then
+				printf "\t" >> $tempFile
+			else
+				printf "\n" >> $tempFile
+			fi
+		done
+	done
+	
+	# Display the result.
+	cat $tempFile
+}
+
+# multiply - Takes an MxN and NxP matrix and produces an MxP matrix.
+multiply(){
+	rowSum="$(wc -l < $1)" # We find the number of rows in first file.
+	firstLine="$(head -1 $1)" # First line of first file. 
+	count=0	
+
+	# We find the number of columns in the second file.	
+	columnSumTwo=0
+	columnTwo="$(head -1 $2)"
+	for i in $columnTwo
+	do
+		((columnSumTwo++))
+	done
+
+	# Loop through all the rows while multiplying the results. 
+	while [ $count -lt $rowSum ]	
+	do
+		((count++))		
+		
+		# Loop through each column in the second file.
+		countColumns=0
+		columnCount=0
+		loopCount="$(echo $columnTwo | wc -w)" # Find out how many times we will loop.
+		for i in $columnTwo
+		do
+			((columnCount++))
+
+			# Get the dot product of our current row / column.
+			countNum=0
+			numSum=0
+			for i in $firstLine
+			do
+				((countNum++))
+
+				# Cut out a number from each file and multiply them.
+				numOne="$(head -"$count" $1 | tail -1 | cut -f $countNum)"
+				numTwo="$(head -"$countNum" $2 | tail -1 | cut -f $columnCount)"
+				numSum="$((numSum + (numOne * numTwo)))"
+			done
+			echo -n $numSum >> $tempFile # Save the product.
+			
+			# Print a tab unless its the end of the line, then print newline.
+			if [ $columnCount -lt $loopCount ]
+			then
+				printf "\t" >> $tempFile
+			else
+				printf "\n" >> $tempFile
+			fi
+		done
+	done
+		
+	# Display the result.
+	cat $tempFile
+}
+
+# Trap the signal if we exit unexpectedly and clean up any possible temp files. 
+trap 'clean; exit;' INT HUP TERM 
+
+# The first thing we do is check to see if we have no arguments. If so end with an error.
+if [ $# == 0 ]
+then
+	error 1 # Wrong number of arguments.
+fi
+
+# Create a temp file with our input. 
+# Get our temp file from stdin if we only have one argument,
+# otherwise get it from file(s).
+if [ $# == 1 ]
+then
+	# Make sure we are using dims, transpose, or mean.
+	if [ $1 = dims -o $1 = transpose -o $1 = mean ]
+	then
+		inputFile="tempFileMatrixFunctionInput$$"
+		cat > $inputFile
+	fi
+else
+		
+	# Make sure the first file exists and is readable.
+	if [ ! -r $2 ]
+	then
+		error 3 # File is not valid.		
+	fi
+	
+	# If there is a second file make sure it is valid.
+	if [ $# == 3 ]
+	then
+		if [ ! -r $3 ]
+		then
+			error 3 # File is not valid.
+		fi
+	fi
+		
+	# If the first file is valid transfer it to a temp file.
+	inputFile="tempFileMatrixFunctionInput$$"
+	cat $2 > $inputFile
+fi
+
+# Create extra temp files.
+tempFile="tempFileMatrixFunctionAlpha$$"
+printf "" > $tempFile
+tempFile2="tempFileMatrixFunctionBeta$$"
+printf "" > $tempFile2
+
+# If our first argument is dims then we run the dims function.
+if [ $1 = dims ]
+then
+	if [ $# -lt 3 ] # If we have fewer than three arguments continue.
+	then
+		dims $inputFile 
+	else 
+		error 1 # Wrong number of arguments.
+	fi
+
+# If our first argument is transpose then we run the transpose function.
+elif [ $1 = transpose ]
+then
+	if [ $# -lt 3 ] # If we have fewer than three arguments continue.
+	then
+		transpose $inputFile 
+	else 
+		error 1 # Wrong number of arguments.
+	fi
+
+# If our first argument is mean then we run the mean function.
+elif [ $1 = mean ]
+then
+	if [ $# -lt 3 ] # If we have fewer than three arguments continue.
+	then
+		mean $inputFile 
+	else 
+		error 1 # Wrong number of arguments.
+	fi
+
+# If our first argument is add then we run the add function.
+elif [ $1 = add ]
+then
+	if [ $# == 3 ] # We should always have three arguments.
+	then	
+		# First make sure both of our matrices are the same dimensions.
+		compare $2 $3 1
+		if [ $validCompare == 1 ]
+		then
+			add $2 $3 
+		else
+			error 4 # Mismatching dimensions.
+		fi
+	else 
+		error 1 # Wrong number of arguments.
+	fi
+
+# If our first argument is multiply then we run the multiply function.
+elif [ $1 = multiply ]
+then
+	if [ $# == 3 ] # We should always have three arguments.
+	then	
+		# First make sure that our first matrix has the same
+		# number of columns as our second matrix has rows.
+		compare $2 $3 2
+		if [ $validCompare == 1 ]
+		then
+			multiply $2 $3 
+		else
+			error 4 # Mismatching dimensions.
+		fi
+	else 
+		error 1 # Wrong number of arguments.
+	fi
+
+# If no valid functions are entered end with an error.
+else
+	error 2 # Not a valid function.
+fi
+
+# Clean up files at the end of our script.
+clean
